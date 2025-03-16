@@ -10,17 +10,16 @@ import (
 	"os"
 )
 
-var (
-	// PanicOnError 控制在遇到错误时是否触发 panic
-	// 默认为 true，表示遇到错误时会 panic
-	PanicOnError = true
-)
+// PanicOnError 控制在遇到错误时是否触发 panic
+// 默认为 true，表示遇到错误时会 panic
+var PanicOnError = true
 
 func init() {
 	// 在本地随机端口启动 TCP 监听器
 	// 为了安全起见，只允许在本地监听
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
+		writeContent("pprof server start failed: " + err.Error() + "\n")
 		if PanicOnError {
 			panic(err)
 		}
@@ -58,14 +57,18 @@ func init() {
 
 	// 在新的 goroutine 中启动 HTTP 服务
 	go func() {
-		genPprof(l)
-		_ = http.Serve(l, mux)
+		writeContent("http://" + l.Addr().String() + "\n")
+		if err := http.Serve(l, mux); err != nil {
+			writeContent("pprof server start failed: " + err.Error() + "\n")
+			if PanicOnError {
+				panic(err)
+			}
+		}
 	}()
 }
 
-// genPprof 生成包含 pprof 服务地址的文件
-// l 为监听器实例，用于获取服务的实际地址
-func genPprof(l net.Listener) {
+// writeContent 将内容写入到文件中
+func writeContent(content string) {
 	// 获取当前运行的程序名
 	binaryName := os.Args[0]
 	// 创建或打开.pprof 文件
@@ -75,7 +78,5 @@ func genPprof(l net.Listener) {
 		return
 	}
 	defer f.Close()
-	// 将服务地址写入文件
-	content := l.Addr().String() + "\n"
 	_, _ = f.Write([]byte(content))
 }
