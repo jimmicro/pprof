@@ -3,11 +3,14 @@ package pprof
 
 import (
 	"expvar"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
 	"net/http/pprof"
 	"os"
+	"path/filepath"
+	"strconv"
 )
 
 // PanicOnError 控制在遇到错误时是否触发 panic
@@ -15,51 +18,36 @@ import (
 var PanicOnError = true
 
 func init() {
-	// 在本地随机端口启动 TCP 监听器
-	// 为了安全起见，只允许在本地监听
-	l, err := net.Listen("tcp", "127.0.0.1:0")
+	l, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", resolvePort(os.Getenv("PPROF_PORT"))))
 	if err != nil {
-		writeContent("pprof server start failed: " + err.Error() + "\n")
+		log.Println("pprof server start failed:", err)
 		if PanicOnError {
 			panic(err)
 		}
 		return
 	}
 
-	// 创建新的 HTTP 路由复用器
+	port := l.Addr().(*net.TCPAddr).Port
+	writeAddr(os.Args[0], os.Getpid(), port)
+
 	mux := http.NewServeMux()
-	// 注册各种 pprof 处理器
-	// Index 页面会显示所有可用的 profile 列表
 	mux.HandleFunc("/", pprof.Index)
 	mux.HandleFunc("/debug/pprof/", pprof.Index)
-	// 显示程序的命令行参数
 	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
-	// CPU profile 信息
 	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
-	// 程序中的 symbol 信息
 	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
-	// 程序执行追踪信息
 	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
-	// 内存分配采样信息
 	mux.HandleFunc("/debug/pprof/allocs", pprof.Handler("allocs").ServeHTTP)
-	// goroutine 阻塞事件的采样信息
 	mux.HandleFunc("/debug/pprof/block", pprof.Handler("block").ServeHTTP)
-	// 当前所有 goroutine 的堆栈信息
 	mux.HandleFunc("/debug/pprof/goroutine", pprof.Handler("goroutine").ServeHTTP)
-	// 堆内存分配情况的采样信息
 	mux.HandleFunc("/debug/pprof/heap", pprof.Handler("heap").ServeHTTP)
-	// 互斥锁的竞争情况的采样信息
 	mux.HandleFunc("/debug/pprof/mutex", pprof.Handler("mutex").ServeHTTP)
-	// 系统线程创建情况的采样信息
 	mux.HandleFunc("/debug/pprof/threadcreate", pprof.Handler("threadcreate").ServeHTTP)
-	// 导出包中公开的变量
 	mux.Handle("/debug/vars", expvar.Handler())
 
-	// 在新的 goroutine 中启动 HTTP 服务
 	go func() {
-		writeContent("http://" + l.Addr().String() + "\n")
 		if err := http.Serve(l, mux); err != nil {
-			writeContent("pprof server start failed: " + err.Error() + "\n")
+			log.Println("pprof server stopped:", err)
 			if PanicOnError {
 				panic(err)
 			}
@@ -67,16 +55,35 @@ func init() {
 	}()
 }
 
-// writeContent 将内容写入到文件中
-func writeContent(content string) {
-	// 获取当前运行的程序名
-	binaryName := os.Args[0]
-	// 创建或打开.pprof 文件
-	f, err := os.OpenFile(binaryName+".pprof", os.O_CREATE|os.O_WRONLY, 0644)
+// resolvePort 解析 PPROF_PORT 环境变量值，无效或未设置时返回 0（随机端口）
+func resolvePort(envVal string) int {
+	if envVal == "" {
+		return 0
+	}
+	n, err := strconv.Atoi(envVal)
+	if err != nil || n < 0 || n > 65535 {
+		return 0
+	}
+	return n
+}
+
+// buildFilename 根据 binary 路径、pid 和 port 生成唯一的 .pprof 文件名
+func buildFilename(binaryPath string, pid, port int) string {
+	base := filepath.Base(binaryPath)
+	return fmt.Sprintf("%s_%d_%d.pprof", base, pid, port)
+}
+
+// writeAddr 在 binary 所在目录写入 <name>_<pid>_<port>.pprof 文件，内容为 pprof 服务地址
+func writeAddr(binaryPath string, pid, port int) {
+	dir := filepath.Dir(binaryPath)
+	filename := buildFilename(binaryPath, pid, port)
+	fullPath := filepath.Join(dir, filename)
+
+	f, err := os.OpenFile(fullPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
 		log.Println(err)
 		return
 	}
 	defer f.Close()
-	_, _ = f.Write([]byte(content))
+	fmt.Fprintf(f, "http://127.0.0.1:%d\n", port)
 }

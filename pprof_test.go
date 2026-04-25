@@ -1,0 +1,97 @@
+package pprof
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+func TestBuildFilename(t *testing.T) {
+	cases := []struct {
+		binaryPath string
+		pid        int
+		port       int
+		want       string
+	}{
+		{"myservice", 1234, 8080, "myservice_1234_8080.pprof"},
+		{"/usr/bin/myservice", 1234, 8080, "myservice_1234_8080.pprof"},
+		{"./myservice", 5678, 9090, "myservice_5678_9090.pprof"},
+		{"/some/deep/path/svc", 1, 12345, "svc_1_12345.pprof"},
+	}
+	for _, c := range cases {
+		got := buildFilename(c.binaryPath, c.pid, c.port)
+		if got != c.want {
+			t.Errorf("buildFilename(%q, %d, %d) = %q, want %q",
+				c.binaryPath, c.pid, c.port, got, c.want)
+		}
+	}
+}
+
+func TestWriteAddrCreatesFile(t *testing.T) {
+	dir := t.TempDir()
+	binary := filepath.Join(dir, "testsvc")
+	pid := os.Getpid()
+	port := 19876
+
+	writeAddr(binary, pid, port)
+
+	filename := buildFilename(binary, pid, port)
+	fullPath := filepath.Join(filepath.Dir(binary), filename)
+	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
+		t.Fatalf("expected file %q to exist", fullPath)
+	}
+}
+
+func TestWriteAddrFileContent(t *testing.T) {
+	dir := t.TempDir()
+	binary := filepath.Join(dir, "testsvc")
+	pid := os.Getpid()
+	port := 19877
+
+	writeAddr(binary, pid, port)
+
+	filename := buildFilename(binary, pid, port)
+	fullPath := filepath.Join(filepath.Dir(binary), filename)
+	data, err := os.ReadFile(fullPath)
+	if err != nil {
+		t.Fatalf("read file: %v", err)
+	}
+	want := fmt.Sprintf("http://127.0.0.1:%d\n", port)
+	if string(data) != want {
+		t.Errorf("file content = %q, want %q", string(data), want)
+	}
+}
+
+func TestResolvePort(t *testing.T) {
+	cases := []struct {
+		envVal string
+		want   int
+	}{
+		{"6060", 6060},
+		{"0", 0},
+		{"65535", 65535},
+		{"", 0},
+		{"abc", 0},
+		{"-1", 0},
+		{"65536", 0},
+	}
+	for _, c := range cases {
+		got := resolvePort(c.envVal)
+		if got != c.want {
+			t.Errorf("resolvePort(%q) = %d, want %d", c.envVal, got, c.want)
+		}
+	}
+}
+
+func TestMultipleInstancesGetDifferentFiles(t *testing.T) {
+	dir := t.TempDir()
+	binary := filepath.Join(dir, "svc")
+
+	f1 := buildFilename(binary, 111, 8081)
+	f2 := buildFilename(binary, 222, 8082)
+
+	if f1 == f2 {
+		t.Errorf("different instances should produce different filenames, both got %q", f1)
+	}
+}
