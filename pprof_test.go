@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -80,6 +81,74 @@ func TestResolvePort(t *testing.T) {
 		got := resolvePort(c.envVal)
 		if got != c.want {
 			t.Errorf("resolvePort(%q) = %d, want %d", c.envVal, got, c.want)
+		}
+	}
+}
+
+func TestDumpScriptFilename(t *testing.T) {
+	cases := []struct {
+		binaryPath string
+		pid        int
+		want       string
+	}{
+		{"myservice", 1234, "myservice_1234_profile_dump.sh"},
+		{"/usr/bin/myservice", 5678, "myservice_5678_profile_dump.sh"},
+	}
+	for _, c := range cases {
+		got := dumpScriptFilename(c.binaryPath, c.pid)
+		if got != c.want {
+			t.Errorf("dumpScriptFilename(%q, %d) = %q, want %q",
+				c.binaryPath, c.pid, got, c.want)
+		}
+	}
+}
+
+func TestGenDumpScriptCreatesExecutableFile(t *testing.T) {
+	dir := t.TempDir()
+	binary := filepath.Join(dir, "testsvc")
+	pid := os.Getpid()
+	port := 19879
+
+	genDumpScript(binary, pid, port)
+
+	scriptPath := filepath.Join(dir, dumpScriptFilename(binary, pid))
+	info, err := os.Stat(scriptPath)
+	if os.IsNotExist(err) {
+		t.Fatalf("expected script %q to exist", scriptPath)
+	}
+	if info.Mode()&0111 == 0 {
+		t.Errorf("script %q should be executable, mode=%v", scriptPath, info.Mode())
+	}
+}
+
+func TestGenDumpScriptContent(t *testing.T) {
+	dir := t.TempDir()
+	binary := filepath.Join(dir, "testsvc")
+	pid := os.Getpid()
+	port := 19880
+
+	genDumpScript(binary, pid, port)
+
+	scriptPath := filepath.Join(dir, dumpScriptFilename(binary, pid))
+	data, err := os.ReadFile(scriptPath)
+	if err != nil {
+		t.Fatalf("read script: %v", err)
+	}
+	content := string(data)
+
+	checks := []string{
+		"#!/bin/sh",
+		fmt.Sprintf("127.0.0.1:%d", port),
+		"/debug/pprof/goroutine",
+		"/debug/pprof/heap",
+		"/debug/pprof/profile",
+		"/debug/pprof/trace",
+		"/debug/vars",
+		fmt.Sprintf("%d", pid),
+	}
+	for _, want := range checks {
+		if !strings.Contains(content, want) {
+			t.Errorf("script missing %q", want)
 		}
 	}
 }

@@ -10,7 +10,9 @@ import (
 	"net/http/pprof"
 	"os"
 	"path/filepath"
+	runtimepprof "runtime/pprof"
 	"strconv"
+	"time"
 )
 
 // PanicOnError 控制在遇到错误时是否触发 panic
@@ -28,7 +30,9 @@ func init() {
 	}
 
 	port := l.Addr().(*net.TCPAddr).Port
-	writeAddr(os.Args[0], os.Getpid(), port)
+	pid := os.Getpid()
+	writeAddr(os.Args[0], pid, port)
+	go genDumpScript(os.Args[0], pid, port)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", pprof.Index)
@@ -44,6 +48,7 @@ func init() {
 	mux.HandleFunc("/debug/pprof/mutex", pprof.Handler("mutex").ServeHTTP)
 	mux.HandleFunc("/debug/pprof/threadcreate", pprof.Handler("threadcreate").ServeHTTP)
 	mux.Handle("/debug/vars", expvar.Handler())
+	registerHeapHandlers(mux)
 
 	go func() {
 		if err := http.Serve(l, mux); err != nil {
@@ -86,4 +91,45 @@ func writeAddr(binaryPath string, pid, port int) {
 	}
 	defer f.Close()
 	fmt.Fprintf(f, "http://127.0.0.1:%d\n", port)
+}
+
+// dumpScriptFilename 生成 dump 脚本文件名
+func dumpScriptFilename(binaryPath string, pid int) string {
+	return fmt.Sprintf("%s_%d_profile_dump.sh", filepath.Base(binaryPath), pid)
+}
+
+// genDumpScript 生成一键采集 pprof 数据的 shell 脚本
+func genDumpScript(binaryPath string, pid, port int) {
+	dir := filepath.Dir(binaryPath)
+	filename := dumpScriptFilename(binaryPath, pid)
+	fullPath := filepath.Join(dir, filename)
+
+	f, err := os.OpenFile(fullPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	defer f.Close()
+
+	addr := fmt.Sprintf("http://127.0.0.1:%d", port)
+	base := filepath.Base(binaryPath)
+	ts := time.Now().Format("20060102_150405")
+	prefix := fmt.Sprintf("%s_%d_%s", base, pid, ts)
+
+	fmt.Fprintf(f, "#!/bin/sh\n")
+	fmt.Fprintf(f, "set -x\n")
+	fmt.Fprintf(f, "DIR=profile/%s\n", prefix)
+	fmt.Fprintf(f, "mkdir -p \"${DIR}\"\n")
+	fmt.Fprintf(f, "curl -sS '%s/debug/vars' -o \"${DIR}/%s_vars\"\n", addr, prefix)
+	for _, p := range runtimepprof.Profiles() {
+		name := p.Name()
+		fmt.Fprintf(f, "curl -sS '%s/debug/pprof/%s' -o \"${DIR}/%s_%s\"\n", addr, name, prefix, name)
+		if name == "goroutine" {
+			fmt.Fprintf(f, "curl -sS '%s/debug/pprof/%s?debug=2' -o \"${DIR}/%s_%s_debug2\"\n", addr, name, prefix, name)
+		}
+	}
+	fmt.Fprintf(f, "curl -sS '%s/debug/pprof/profile?seconds=5' -o \"${DIR}/%s_cpuprofile\"\n", addr, prefix)
+	fmt.Fprintf(f, "curl -sS '%s/debug/pprof/trace?seconds=5' -o \"${DIR}/%s_trace\"\n", addr, prefix)
+	fmt.Fprintf(f, "tar czf \"${DIR}.tar.gz\" \"${DIR}\"\n")
+	fmt.Fprintf(f, "echo \"done: ${DIR}.tar.gz\"\n")
 }
