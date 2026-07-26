@@ -16,6 +16,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 // PanicOnError 控制在遇到错误时是否触发 panic
@@ -38,6 +40,19 @@ func init() {
 	writeAddr(os.Args[0], pid, port)
 	go genDumpScript(os.Args[0], pid, port)
 
+	mux := newServeMux()
+
+	go func() {
+		if err := http.Serve(l, mux); err != nil {
+			log.Println("pprof server stopped:", err)
+			if PanicOnError {
+				panic(err)
+			}
+		}
+	}()
+}
+
+func newServeMux() *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", pprof.Index)
 	mux.HandleFunc("/debug/pprof/", pprof.Index)
@@ -52,16 +67,9 @@ func init() {
 	mux.HandleFunc("/debug/pprof/mutex", pprof.Handler("mutex").ServeHTTP)
 	mux.HandleFunc("/debug/pprof/threadcreate", pprof.Handler("threadcreate").ServeHTTP)
 	mux.Handle("/debug/vars", expvar.Handler())
+	mux.Handle("/metrics", promhttp.Handler())
 	registerHeapHandlers(mux)
-
-	go func() {
-		if err := http.Serve(l, mux); err != nil {
-			log.Println("pprof server stopped:", err)
-			if PanicOnError {
-				panic(err)
-			}
-		}
-	}()
+	return mux
 }
 
 // resolvePort 解析 PPROF_PORT 环境变量值，无效或未设置时返回 0（随机端口）
@@ -213,6 +221,7 @@ func genDumpScript(binaryPath string, pid, port int) {
 	fmt.Fprintf(f, "DIR=profile/%s\n", prefix)
 	fmt.Fprintf(f, "mkdir -p \"${DIR}\"\n")
 	fmt.Fprintf(f, "curl -sS '%s/debug/vars' -o \"${DIR}/%s_vars\"\n", addr, prefix)
+	fmt.Fprintf(f, "curl -sS '%s/metrics' -o \"${DIR}/%s_metrics\"\n", addr, prefix)
 	for _, p := range runtimepprof.Profiles() {
 		name := p.Name()
 		fmt.Fprintf(f, "curl -sS '%s/debug/pprof/%s' -o \"${DIR}/%s_%s\"\n", addr, name, prefix, name)

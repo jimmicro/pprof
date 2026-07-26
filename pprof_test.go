@@ -3,6 +3,8 @@ package pprof
 import (
 	"fmt"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -145,6 +147,7 @@ func TestGenDumpScriptContent(t *testing.T) {
 		"/debug/pprof/profile",
 		"/debug/pprof/trace",
 		"/debug/vars",
+		"/metrics",
 		fmt.Sprintf("%d", pid),
 	}
 	for _, want := range checks {
@@ -163,6 +166,20 @@ func TestMultipleInstancesGetDifferentFiles(t *testing.T) {
 
 	if f1 == f2 {
 		t.Errorf("different instances should produce different filenames, both got %q", f1)
+	}
+}
+
+func TestMetricsEndpoint(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	w := httptest.NewRecorder()
+
+	newServeMux().ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("GET /metrics = %d, want %d", w.Code, http.StatusOK)
+	}
+	if !strings.Contains(w.Body.String(), "go_goroutines") {
+		t.Error("GET /metrics should include default Go runtime metrics")
 	}
 }
 

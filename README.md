@@ -90,6 +90,7 @@ pprof.PanicOnError = false
 | Endpoint        | 说明                  |
 |-----------------|-----------------------|
 | `GET /debug/vars` | 导出的 expvar 变量  |
+| `GET /metrics` | Prometheus 格式的 Go runtime、process 和业务指标 |
 
 ## 一键采集脚本
 
@@ -100,7 +101,7 @@ bash <binary>_<pid>_profile_dump.sh
 # 输出: profile/<binary>_<pid>_<timestamp>.tar.gz
 ```
 
-脚本内含 goroutine、heap、allocs 等所有 profile，以及 5 秒 CPU profile 和 trace。
+脚本内含 Prometheus metrics、goroutine、heap、allocs 等所有 profile，以及 5 秒 CPU profile 和 trace。
 
 ## 开发
 
