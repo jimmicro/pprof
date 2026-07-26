@@ -96,7 +96,7 @@ func writeAddr(binaryPath string, pid, port int) {
 	filename := buildFilename(binaryPath, pid, port)
 	fullPath := filepath.Join(dir, filename)
 
-	f, err := os.OpenFile(fullPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	f, err := os.OpenFile(fullPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
 	if err != nil {
 		log.Println(err)
 		return
@@ -204,7 +204,7 @@ func genDumpScript(binaryPath string, pid, port int) {
 	filename := dumpScriptFilename(binaryPath, pid)
 	fullPath := filepath.Join(dir, filename)
 
-	f, err := os.OpenFile(fullPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
+	f, err := os.OpenFile(fullPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
 	if err != nil {
 		log.Println(err)
 		return
