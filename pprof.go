@@ -217,6 +217,14 @@ func genDumpScript(binaryPath string, pid, port int) {
 	prefix := fmt.Sprintf("%s_%d_%s", base, pid, ts)
 
 	fmt.Fprintf(f, "#!/bin/sh\n")
+	fmt.Fprintf(f, "FULL_GOROUTINE=0\n")
+	fmt.Fprintf(f, "if [ \"$#\" -gt 0 ]; then\n")
+	fmt.Fprintf(f, "  if [ \"$#\" -ne 1 ] || [ \"$1\" != \"--full-goroutine\" ]; then\n")
+	fmt.Fprintf(f, "    echo \"usage: $0 [--full-goroutine]\" >&2\n")
+	fmt.Fprintf(f, "    exit 2\n")
+	fmt.Fprintf(f, "  fi\n")
+	fmt.Fprintf(f, "  FULL_GOROUTINE=1\n")
+	fmt.Fprintf(f, "fi\n")
 	fmt.Fprintf(f, "set -x\n")
 	fmt.Fprintf(f, "DIR=profile/%s\n", prefix)
 	fmt.Fprintf(f, "mkdir -p \"${DIR}\"\n")
@@ -226,7 +234,9 @@ func genDumpScript(binaryPath string, pid, port int) {
 		name := p.Name()
 		fmt.Fprintf(f, "curl -sS '%s/debug/pprof/%s' -o \"${DIR}/%s_%s\"\n", addr, name, prefix, name)
 		if name == "goroutine" {
+			fmt.Fprintf(f, "if [ \"${FULL_GOROUTINE}\" = \"1\" ]; then\n")
 			fmt.Fprintf(f, "curl -sS '%s/debug/pprof/%s?debug=2' -o \"${DIR}/%s_%s_debug2\"\n", addr, name, prefix, name)
+			fmt.Fprintf(f, "fi\n")
 		}
 	}
 	fmt.Fprintf(f, "curl -sS '%s/debug/pprof/profile?seconds=5' -o \"${DIR}/%s_cpuprofile\"\n", addr, prefix)

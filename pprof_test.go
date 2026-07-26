@@ -148,6 +148,8 @@ func TestGenDumpScriptContent(t *testing.T) {
 		"/debug/pprof/trace",
 		"/debug/vars",
 		"/metrics",
+		"--full-goroutine",
+		`if [ "${FULL_GOROUTINE}" = "1" ]`,
 		fmt.Sprintf("%d", pid),
 	}
 	for _, want := range checks {

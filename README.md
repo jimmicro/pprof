@@ -101,7 +101,11 @@ bash <binary>_<pid>_profile_dump.sh
 # 输出: profile/<binary>_<pid>_<timestamp>.tar.gz
 ```
 
-脚本内含 Prometheus metrics、goroutine、heap、allocs 等所有 profile，以及 5 秒 CPU profile 和 trace。
+脚本内含 Prometheus metrics、goroutine、heap、allocs 等所有 profile，以及 5 秒 CPU profile 和 trace。默认不采集可能造成较长 STW 的 goroutine 完整文本栈；仅在确有需要时显式开启：
+
+```bash
+bash <binary>_<pid>_profile_dump.sh --full-goroutine
+```
 
 ## 开发
 
