@@ -33,6 +33,7 @@ import _ "github.com/jimmicro/pprof"
 ```
 
 文件名包含 pid 和 port，同一 binary 多实例并发运行时各自独立，互不覆盖。
+新实例启动时会自动删除已经无法连接的旧实例地址文件及其 dump 脚本，仍在运行的实例不受影响。
 
 collector 侧发现所有实例：
 

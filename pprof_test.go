@@ -2,6 +2,7 @@ package pprof
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -162,5 +163,51 @@ func TestMultipleInstancesGetDifferentFiles(t *testing.T) {
 
 	if f1 == f2 {
 		t.Errorf("different instances should produce different filenames, both got %q", f1)
+	}
+}
+
+func TestCleanupStaleArtifacts(t *testing.T) {
+	dir := t.TempDir()
+	binary := filepath.Join(dir, "svc")
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer listener.Close()
+	activePort := listener.Addr().(*net.TCPAddr).Port
+
+	staleListener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen for stale port: %v", err)
+	}
+	stalePort := staleListener.Addr().(*net.TCPAddr).Port
+	staleListener.Close()
+
+	writeAddr(binary, 111, activePort)
+	genDumpScript(binary, 111, activePort)
+	writeAddr(binary, 222, stalePort)
+	genDumpScript(binary, 222, stalePort)
+
+	cleanupStaleArtifacts(binary, os.Getpid())
+
+	activeFiles := []string{
+		filepath.Join(dir, buildFilename(binary, 111, activePort)),
+		filepath.Join(dir, dumpScriptFilename(binary, 111)),
+	}
+	for _, path := range activeFiles {
+		if _, err := os.Stat(path); err != nil {
+			t.Errorf("active artifact %q should be preserved: %v", path, err)
+		}
+	}
+
+	staleFiles := []string{
+		filepath.Join(dir, buildFilename(binary, 222, stalePort)),
+		filepath.Join(dir, dumpScriptFilename(binary, 222)),
+	}
+	for _, path := range staleFiles {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Errorf("stale artifact %q should be removed, stat err=%v", path, err)
+		}
 	}
 }

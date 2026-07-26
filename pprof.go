@@ -4,14 +4,17 @@ package pprof
 import (
 	"expvar"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
 	"net/http/pprof"
+	"net/url"
 	"os"
 	"path/filepath"
 	runtimepprof "runtime/pprof"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -31,6 +34,7 @@ func init() {
 
 	port := l.Addr().(*net.TCPAddr).Port
 	pid := os.Getpid()
+	cleanupStaleArtifacts(os.Args[0], pid)
 	writeAddr(os.Args[0], pid, port)
 	go genDumpScript(os.Args[0], pid, port)
 
@@ -91,6 +95,94 @@ func writeAddr(binaryPath string, pid, port int) {
 	}
 	defer f.Close()
 	fmt.Fprintf(f, "http://127.0.0.1:%d\n", port)
+}
+
+// cleanupStaleArtifacts 删除已停止实例遗留的地址文件和 dump 脚本。
+func cleanupStaleArtifacts(binaryPath string, currentPID int) {
+	dir := filepath.Dir(binaryPath)
+	base := filepath.Base(binaryPath)
+	entries, err := ioutil.ReadDir(dir)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	activePIDs := map[int]bool{currentPID: true}
+	for _, entry := range entries {
+		pid, ok := parseAddrFilename(base, entry.Name())
+		if !ok {
+			continue
+		}
+
+		path := filepath.Join(dir, entry.Name())
+		if addrFileAlive(path) {
+			activePIDs[pid] = true
+			continue
+		}
+		if err := os.Remove(path); err != nil {
+			log.Println(err)
+		}
+	}
+
+	for _, entry := range entries {
+		pid, ok := parseDumpScriptFilename(base, entry.Name())
+		if !ok || activePIDs[pid] {
+			continue
+		}
+		if err := os.Remove(filepath.Join(dir, entry.Name())); err != nil {
+			log.Println(err)
+		}
+	}
+}
+
+func parseAddrFilename(base, name string) (int, bool) {
+	if !strings.HasPrefix(name, base+"_") || !strings.HasSuffix(name, ".pprof") {
+		return 0, false
+	}
+
+	parts := strings.Split(strings.TrimSuffix(strings.TrimPrefix(name, base+"_"), ".pprof"), "_")
+	if len(parts) != 2 {
+		return 0, false
+	}
+	pid, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return 0, false
+	}
+	if _, err := strconv.Atoi(parts[1]); err != nil {
+		return 0, false
+	}
+	return pid, true
+}
+
+func parseDumpScriptFilename(base, name string) (int, bool) {
+	const suffix = "_profile_dump.sh"
+	if !strings.HasPrefix(name, base+"_") || !strings.HasSuffix(name, suffix) {
+		return 0, false
+	}
+
+	pid, err := strconv.Atoi(strings.TrimSuffix(strings.TrimPrefix(name, base+"_"), suffix))
+	if err != nil {
+		return 0, false
+	}
+	return pid, true
+}
+
+func addrFileAlive(path string) bool {
+	data, err := ioutil.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	u, err := url.Parse(strings.TrimSpace(string(data)))
+	if err != nil || u.Scheme != "http" || u.Host == "" {
+		return false
+	}
+
+	conn, err := net.DialTimeout("tcp", u.Host, 100*time.Millisecond)
+	if err != nil {
+		return false
+	}
+	conn.Close()
+	return true
 }
 
 // dumpScriptFilename 生成 dump 脚本文件名
