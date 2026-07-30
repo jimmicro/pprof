@@ -36,7 +36,6 @@ func init() {
 
 	port := l.Addr().(*net.TCPAddr).Port
 	pid := os.Getpid()
-	cleanupStaleArtifacts(os.Args[0], pid)
 	writeAddr(os.Args[0], pid, port)
 	go genDumpScript(os.Args[0], pid, port)
 
@@ -50,6 +49,7 @@ func init() {
 			}
 		}
 	}()
+	go cleanupStaleArtifacts(os.Args[0], pid)
 }
 
 func newServeMux() *http.ServeMux {
@@ -119,6 +119,9 @@ func cleanupStaleArtifacts(binaryPath string, currentPID int) {
 	for _, entry := range entries {
 		pid, ok := parseAddrFilename(base, entry.Name())
 		if !ok {
+			continue
+		}
+		if pid == currentPID {
 			continue
 		}
 

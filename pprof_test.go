@@ -207,12 +207,17 @@ func TestCleanupStaleArtifacts(t *testing.T) {
 	genDumpScript(binary, 111, activePort)
 	writeAddr(binary, 222, stalePort)
 	genDumpScript(binary, 222, stalePort)
+	currentPID := os.Getpid()
+	writeAddr(binary, currentPID, stalePort)
+	genDumpScript(binary, currentPID, stalePort)
 
-	cleanupStaleArtifacts(binary, os.Getpid())
+	cleanupStaleArtifacts(binary, currentPID)
 
 	activeFiles := []string{
 		filepath.Join(dir, buildFilename(binary, 111, activePort)),
 		filepath.Join(dir, dumpScriptFilename(binary, 111)),
+		filepath.Join(dir, buildFilename(binary, currentPID, stalePort)),
+		filepath.Join(dir, dumpScriptFilename(binary, currentPID)),
 	}
 	for _, path := range activeFiles {
 		if _, err := os.Stat(path); err != nil {
