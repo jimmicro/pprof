@@ -1,9 +1,10 @@
 # pprof
 
+[![Check](https://github.com/jimmicro/pprof/actions/workflows/check.yaml/badge.svg)](https://github.com/jimmicro/pprof/actions/workflows/check.yaml)
+
 [![Go Report Card](https://goreportcard.com/badge/github.com/jimmicro/pprof)](https://goreportcard.com/report/github.com/jimmicro/pprof)
 [![codecov](https://codecov.io/gh/jimmicro/pprof/branch/main/graph/badge.svg)](https://codecov.io/gh/jimmicro/pprof)
 [![License](https://img.shields.io/github/license/jimmicro/pprof)](LICENSE)
-[![Release](https://img.shields.io/github/v/release/jimmicro/pprof)](https://github.com/jimmicro/pprof/releases)
 
 一个零配置的 Go pprof HTTP 服务包装器，导入即启动，支持多实例并发运行。
 
