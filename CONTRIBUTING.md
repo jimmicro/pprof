@@ -53,8 +53,7 @@ task test
 
 ## Code Style
 
-- Format with `gofmt` and `gofumpt`
-- Organize imports with `goimports`
-- Pass `staticcheck` and `go vet`
+- Format with `golangci-lint fmt`
+- Pass `golangci-lint run ./...` (new issues only)
 
 Run `task lint` before submitting — the CI enforces the same checks.
