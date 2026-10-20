@@ -41,6 +41,6 @@ jobs:
           go-version: stable
           cache-dependency-path: go.sum
       - run: GORACE=atexit_sleep_ms=0 go test -race -coverprofile=coverage.txt ./...
-      - uses: codecov/codecov-action@v5
+      - uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
